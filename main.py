@@ -5,9 +5,17 @@ from groq import Groq, RateLimitError, APIStatusError
 
 app = FastAPI()
 
-# Comma-separated keys ko list me load karein
-RAW_KEYS = os.environ.get("GROQ_API_KEYS", "")
-API_KEYS = [k.strip() for k in RAW_KEYS.split(",") if k.strip()]
+# Saari alag-alag keys ko ek list me automatically collect karega
+API_KEYS = []
+for i in range(1, 11):  # Key 1 se 10 tak search karega
+    key = os.environ.get(f"GROQ_API_KEY_{i}")
+    if key and key.strip():
+        API_KEYS.append(key.strip())
+
+# Backup check: agar single GROQ_API_KEY ho to wo bhi le lega
+single_key = os.environ.get("GROQ_API_KEY")
+if single_key and single_key.strip():
+    API_KEYS.append(single_key.strip())
 
 class CodeRequest(BaseModel):
     prompt: str
@@ -15,7 +23,10 @@ class CodeRequest(BaseModel):
 @app.post("/analyze-code")
 async def analyze_code(request: CodeRequest):
     if not API_KEYS:
-        raise HTTPException(status_code=500, detail="No Groq API keys configured.")
+        raise HTTPException(
+            status_code=500, 
+            detail="No Groq API keys found. Set GROQ_API_KEY_1, GROQ_API_KEY_2 in Render."
+        )
 
     last_error = None
 
@@ -40,20 +51,19 @@ async def analyze_code(request: CodeRequest):
             )
             
             return {
-                "response": chat_completion.choices[0].message.content,
-                "key_used_index": idx + 1
+                "status": "success",
+                "key_used": f"GROQ_API_KEY_{idx + 1}",
+                "response": chat_completion.choices[0].message.content
             }
 
         except (RateLimitError, APIStatusError) as e:
-            # Agar rate limit (429) ya API error aaye to next key try karein
             last_error = str(e)
             continue
         except Exception as e:
             last_error = str(e)
             continue
 
-    # Agar saari keys ki limit khatam ho chuki ho
     raise HTTPException(
         status_code=429,
-        detail=f"All configured Groq API keys exhausted or failed. Last error: {last_error}"
+        detail=f"All keys exhausted. Last error: {last_error}"
     )
