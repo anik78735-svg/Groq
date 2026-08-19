@@ -9,14 +9,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Render Environment Variables se keys collect karna (GROQ_API_KEY_1, GROQ_API_KEY_2, etc.)
+# Render Environment Variables se keys collect karna
 API_KEYS = []
 for i in range(1, 11):
     key = os.environ.get(f"GROQ_API_KEY_{i}")
     if key and key.strip():
         API_KEYS.append(key.strip())
 
-# Backup check: agar direct GROQ_API_KEY set ho
 single_key = os.environ.get("GROQ_API_KEY")
 if single_key and single_key.strip() and single_key.strip() not in API_KEYS:
     API_KEYS.append(single_key.strip())
@@ -42,7 +41,7 @@ async def analyze_code(request: CodeRequest):
 
     last_error = None
 
-    # Multi-key fallback loop
+    # Multi-key rotation loop
     for idx, key in enumerate(API_KEYS):
         try:
             client = Groq(api_key=key)
@@ -62,7 +61,8 @@ async def analyze_code(request: CodeRequest):
                         "content": request.prompt
                     }
                 ],
-                model="llama-3.1-70b-versatile",
+                # Active and supported model on Groq:
+                model="llama-3.1-8b-instant",
                 temperature=0.2,
                 max_tokens=4096
             )
@@ -70,7 +70,7 @@ async def analyze_code(request: CodeRequest):
             return {
                 "status": "success",
                 "key_used": f"GROQ_API_KEY_{idx + 1}",
-                "model": "llama-3.1-70b-versatile",
+                "model": "llama-3.1-8b-instant",
                 "response": chat_completion.choices[0].message.content
             }
 
@@ -81,7 +81,6 @@ async def analyze_code(request: CodeRequest):
             last_error = str(e)
             continue
 
-    # Agar saari keys fail ho jayein
     raise HTTPException(
         status_code=429,
         detail=f"All configured API keys exhausted or returned errors. Last error: {last_error}"
